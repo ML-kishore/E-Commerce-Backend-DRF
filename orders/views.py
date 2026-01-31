@@ -3,11 +3,15 @@ from cart.models import Cart,CartItem
 from catalog.models import Categories,Products
 from .models import Orders,OrderItem
 from rest_framework.decorators import api_view,permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated,IsAdminUser
 from catalog.permissions import IsAdminorReadOnly
 from django.db import transaction
+from django.db.models import Q,Sum
 from rest_framework.response import Response
 from .serializers import OrderSerializer,OrderItemSerializer
+from users.models import User
+from datetime import timedelta
+from django.utils import timezone
 # Create your views here.
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -82,13 +86,6 @@ def cancel_order(request,order_id):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def get_orders(request):
-    orders = Orders.objects.filter(user=request.user).select_related('user')
-    serializer = OrderSerializer(orders,many=True)
-    return Response(serializer.data,status=200)
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
 def get_one_order(request,order_id):
     try:
         order = Orders.objects.select_related('user').prefetch_related('orderitem__product').filter(id=order_id,user=request.user)
@@ -134,3 +131,70 @@ def update_status(request,order_id):
     order.save()
 
     return Response({"message" : "Status Updated...."},status=200)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_orders(request):
+    try:
+        orders = Orders.objects.filter(user=request.user).select_related('user')
+    except Orders.DoesNotExist:
+        return Response({"message" : "Orders Does not Exist"},status=404)
+    
+    status_choices = ["order_placed","shipped","delivered","out_for_delivery"]
+    status=request.query_params.get('status')
+    is_cancelled = request.query_params.get('is_cancelled')
+
+    
+
+    if status:
+        if status not in status_choices:
+            return Response({"error" : "Status Does Not matched..."},status=404)
+        orders = orders.filter(order_status__icontains=status)
+    
+    if is_cancelled == 'true':
+        orders = orders.filter(is_cancelled=True)
+    else:
+        orders = orders.filter(is_cancelled=False)
+
+    order_by_filters = ['order_date','-order_date','amount','-amount']
+
+    order_filter = request.query_params.get('order')
+
+    if order_filter:
+        if order_filter in order_by_filters:
+            orders = orders.order_by(order_filter)
+
+    
+    serializer = OrderSerializer(orders,many=True)
+    return Response(serializer.data,status=200)
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser,IsAuthenticated])
+def admin_reports(request):
+    orders = Orders.objects.all()
+    this_year = timezone.now().date() - timedelta(days=365)
+
+    user_count = User.objects.all().count()
+    orders_count = orders.count()
+    sales = Orders.objects.filter(Q(is_cancelled=False)).aggregate(total_sales=Sum('amount'))
+    sales = sales['total_sales'] or 0
+    revenue = Orders.objects.filter(is_cancelled=False,order_status='DELIVERED').aggregate(sales_count=Sum('amount'))
+    revenue = revenue['sales_count'] or 0
+    sales_last_year = Orders.objects.filter(Q(is_cancelled=False) & Q(order_date__gte=this_year)).aggregate(sales_last_year=Sum('amount'))
+    sales_last_year = sales_last_year['sales_last_year'] or 0
+
+    response_dict = {
+        "orders_count" : orders_count,
+        "users_count" : user_count,
+        "sales" : sales,
+        "revenue" : revenue,
+        "sales_last_year" : sales_last_year
+    }
+
+    return Response(response_dict,status=200)
+
+
+    
+
