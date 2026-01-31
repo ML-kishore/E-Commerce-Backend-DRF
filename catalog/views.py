@@ -50,8 +50,7 @@ def view_products(request):
 
     #tommorow features function for serach queries and ratings filter..... (25/01/2026)
 
-    search = request.GET.get('search')
-
+    search = request.query_params.get('search')
     queryset = search_queryset(products,search)
 
     ordering = request.query_params.get('ordering')
@@ -105,3 +104,33 @@ def add_products(request):
             serializer.save()
             return Response({"message" : "New Product added"},status=201)
     return Response({"error" : serializer.error_messages},status=400)
+
+@api_view(['PATCH'])
+@permission_classes([IsAdminorReadOnly,IsAuthenticated])
+def update_product(request,product_id):
+    try:
+        product = Products.objects.get(id=product_id)
+    except Products.DoesNotExist:
+        return Response({"message" : "Product Does not Exist...."},status=404)
+    
+    serializer = ProductSerializer(instance=product,partial=True,data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response({"message" : "Product has been updated..."},status=200)
+    
+
+@api_view(['DELETE'])
+@permission_classes([IsAdminorReadOnly,IsAuthenticated])
+def mark_product_as_deleted(request,product_id):
+    try:
+        product = Products.objects.filter(is_deleted=False,id=product_id)
+    except Products.DoesNotExist:
+        return Response({"message" : "Product does not Exist...."},status=404)
+    
+    product.is_deleted=True
+    product.save()
+    return Response({"message" : "Product has been removed from site..."},status=200)
+
+
+    
+

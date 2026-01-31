@@ -26,6 +26,10 @@ def place_order(request):
         order = Orders.objects.create(user=user,amount=0)
         total = 0
         for item in cart_items:
+            if item.product.stock_left < item.quantity:
+                return Response({"message" : f"Insufficient Stock... {item.product} has only {item.product.stock_left} left...."},status=200)
+            
+        for item in cart_items:
             order_item = OrderItem.objects.create(order=order,product=item.product,quantity=item.quantity,price_at_purchase=item.product.price)
 
             total += order_item.subtotal

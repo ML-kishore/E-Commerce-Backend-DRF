@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from django.db import transaction
 from catalog.models import Products,Categories
 from users.models import User
+from django.db.models import Q,Sum,F
 
 # Create your views here.
 
@@ -115,6 +116,111 @@ def remove_from_cart(request,product_id):
         cart_item.delete()
         return Response({"message" : "Item Removed From Cart...."},status=200)
     return Response({"error" : "Bad Request..."},status=400)
+
+
+possible_queries = ['items__product__name',"items__product__category__name"]
+#later with ratings possible_queireies
+def search_query(queryset,param):
+    if not param:
+        return queryset
+    print(param, "hihello")
+    print("just checking from serach")
+    q = Q()
+
+    for field in possible_queries:
+        q = q | Q(**{f"{field}__icontains" : param})
+    
+    return queryset.filter(q)
+
+filter_params = {
+    "name" : "items__product__name",
+    "category" : "items__product__category__name",
+    "search" : "items__product__name"
+    
+}
+
+def apply_filters(queryset,params):
+
+    filters = {}
+    if not params:
+        return queryset
+    
+    for param,field in filter_params.items():
+        value = params.get(param)
+        print(value)
+        if value is None:
+            continue
+        if field == "items__product__name":
+            filters[f"{field}__icontains"] = value
+        else:
+            filters[field] = value
+    return queryset.filter(**filters)            
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def filter_item_in_cart(request):
+    cart_qs = Cart.objects.filter(user=request.user)
+    if not cart_qs.exists():
+        return Response({"error" : "Cart Does not exist"},status=404)
+    
+    search = request.query_params.get('search')
+    #search_norm = search.lower().rstrip('s')
+    zx = Categories.objects.values_list('name').filter(name='Mobiles').first()
+    #print(zx ,len(zx))
+    #print(search, "hi hellowdaw", len(search))
+    params = request.query_params
+    print(params, "this is params daw....")
+
+    if search:
+        cart_items = CartItem.objects.filter(cart__user = request.user).filter(Q(product__name__icontains = search) | 
+                                Q(product__category__slug__iexact=search))
+        print(
+    CartItem.objects.filter(
+        product__category__name__icontains='Mobile'
+    ).query
+)
+
+        
+        cart_ids = cart_items.values_list('cart_id',flat=True)
+        queryset = cart_qs.filter(id__in = cart_ids)
+    else:
+        queryset = cart_qs
+
+    queryset = apply_filters(queryset,params)
+
+    serializer = CartSerializer(queryset,many=True)
+    return Response(serializer.data,status=200)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def cart_summary(request):
+    user = request.user
+    cart = Cart.objects.get(user=user)
+    if not cart:
+        return Response({"total_cart_item_count" : 0,"grand_total" : 0},status=200)
+    summary_items = cart.items.aggregate(total_items_count=Sum('quantity'), grand_total=Sum(F('quantity') * F('product__price')))
+    response_dict = {"total_items_count" : summary_items['total_items_count'] or 0, "grand_total" : summary_items['grand_total'] or 0}
+    return Response(response_dict,status=200)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def clear_cart(request):
+    user = request.user
+    cart=Cart.objects.get(user=user)
+    if not cart:
+        return Response({"message":"cart does not exist"},status=200)
+    cart.delete()
+    return Response({"message" : "Cart has cleared....."},status=200)
+    
+
+
+
+
+    
+
+
 
 
 
