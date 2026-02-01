@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'users',
     'cart',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist'
 ]
 
 AUTH_USER_MODEL = 'users.User'
