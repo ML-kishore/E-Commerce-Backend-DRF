@@ -5,6 +5,10 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from catalog.permissions import IsAdminorReadOnly
 from .serializers import UserSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_decode,urlsafe_base64_encode
+from django.utils.encoding import force_bytes,force_str
 
 
 # Create your views here.
@@ -52,4 +56,47 @@ def view_users(request):
         serializer = UserSerializer(users,many=True)
         return Response(serializer.data, status=200)
     return Response(serializer.errors,status=400)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    try:
+        refresh = request.data.get("refresh")
+        token = RefreshToken(refresh)
+
+        token.blacklist()
+        return Response({"message" : "User has been logged out"},status=205)
+    except Exception as e:
+        return Response({"error" : str(e)},status=205)
+    
+@api_view(['POST'])
+@permission_classes([])
+def password_reset_request(request):
+    email = request.data.get('email')
+    user = User.objects.get(email=email).first()
+    if user:
+        token = default_token_generator.make_token(user)
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        return Response({"uidb64" : uidb64, "token" : token},status=200)
+    else:
+        return Response({"error" : "User not found ..."},status=404)
+
+@api_view(['POST'])
+@permission_classes([])
+def password_reset(request):
+    uidb64 = request.data.get('uidb64')
+    token = request.data.get('token')
+    new_password = request.data.get('password')
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except:
+        user is None
+
+    if user and default_token_generator.check_token(user,token):
+        user.set_password(new_password)
+        user.save()
+        return Response({"message" : "Password Reset Successfully"},status=200)
+    else:
+        return Response({"error":"Invalid Token"},status=400)
 
