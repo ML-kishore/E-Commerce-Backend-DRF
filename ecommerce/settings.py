@@ -61,7 +61,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'users.middleware.custom_auth_middleware',
+    
 ]
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
